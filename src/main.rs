@@ -34,7 +34,7 @@ impl From<reqwest::Error> for GithubCliUtilError {
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = App::new("github-cli-utils")
-        .version("0.1.0")
+        .version("0.1.1")
         .author("Daiki Ihara <sasurau4@gmail.com>")
         .about("Support developing OSS via cli")
         .arg(
