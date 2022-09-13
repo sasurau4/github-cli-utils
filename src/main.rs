@@ -1,12 +1,11 @@
-#![warn(rust_2018_idioms)]
-
-use clap::{App, AppSettings, Arg};
-use exitfailure::ExitFailure;
+use anyhow::Result;
+use clap::{App, AppSettings, Arg, ArgAction};
 use git2::Repository;
-use log::info;
+use log::{debug, error};
 use reqwest::header::USER_AGENT;
 use serde::Deserialize;
 use std::env;
+use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
 struct Parent {
@@ -15,38 +14,54 @@ struct Parent {
 
 #[derive(Debug, Deserialize)]
 struct Response {
-    name: String,
     parent: Parent,
 }
 
+#[derive(Error, Debug)]
+enum GithubCliUtilError {
+    #[error("Repository Setting is invalid: {0}")]
+    RepositorySettingError(String),
+    #[error("GitHub api response fail: {0}")]
+    GitHubApiError(String),
+}
+
+impl From<reqwest::Error> for GithubCliUtilError {
+    fn from(e: reqwest::Error) -> GithubCliUtilError {
+        GithubCliUtilError::GitHubApiError(format!("{:?}", e))
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<(), ExitFailure> {
+async fn main() -> Result<()> {
     let matches = App::new("github-cli-utils")
-        .version("0.1")
+        .version("0.1.0")
         .author("Daiki Ihara <sasurau4@gmail.com>")
         .about("Support developing OSS via cli")
         .arg(
             Arg::new("debug")
                 .long("debug")
                 .short('d')
-                .multiple(true)
                 .global(true)
                 .takes_value(false)
-                .about("Turn debugging information on"),
+                .action(ArgAction::Count)
+                .help("Turn debugging information on"),
         )
         .subcommand(App::new("add-upstream").about("add upstream to your git repository"))
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .get_matches();
     let cwd = env::current_dir()?;
-    info!("cwd: {:#?}", &cwd);
+    debug!("cwd: {:#?}", &cwd);
 
-    let log_level = match matches.occurrences_of("debug") {
+    let log_level = match matches
+        .get_one::<u8>("debug")
+        .expect("Count's are defaulted")
+    {
         0 => log::LevelFilter::Error,
         1 => log::LevelFilter::Info,
         _ => log::LevelFilter::Debug,
     };
     env_logger::builder().filter_level(log_level).init();
-    info!("log_level: {}", log_level);
+    debug!("log_level: {}", log_level);
 
     match matches.subcommand_name() {
         Some("add-upstream") => {
@@ -56,13 +71,13 @@ async fn main() -> Result<(), ExitFailure> {
             let splitted_repo_url: Vec<_> = repo_url.split("github.com/").collect();
             let splitted_git_url: Vec<_> = splitted_repo_url[1].split(".git").collect();
             let github_repo_name = splitted_git_url[0];
-            info!("full_name: {:#?}", github_repo_name);
+            debug!("target_repo_name: {:#?}", github_repo_name);
 
             let resp = get_repository_info(github_repo_name).await?;
-            info!("users: {:#?}", resp);
 
-            repo.remote_set_url("upstream", &resp.parent.ssh_url)
-                .unwrap();
+            let upstream_url = format!("ssh://{}", resp.parent.ssh_url);
+            debug!("upstream_url: {}", upstream_url);
+            repo.remote_set_url("upstream", &upstream_url).unwrap();
         }
         None => unreachable!(),
         _ => unreachable!(),
@@ -71,7 +86,7 @@ async fn main() -> Result<(), ExitFailure> {
     Ok(())
 }
 
-async fn get_repository_info(repo_name: &str) -> Result<Response, reqwest::Error> {
+async fn get_repository_info(repo_name: &str) -> Result<Response, GithubCliUtilError> {
     let client = reqwest::Client::new();
     let url = format!("https://api.github.com/repos/{}", repo_name);
     let response = client
@@ -80,7 +95,18 @@ async fn get_repository_info(repo_name: &str) -> Result<Response, reqwest::Error
         .send()
         .await?;
     match response.error_for_status() {
-        Ok(res) => res.json::<Response>().await,
-        Err(err) => panic!("Response failed: {}", err),
+        Ok(res) => {
+            let result = res.json::<Response>().await.map_err(|e| {
+                error!("Convert response to json struct is fail: {:?}", e);
+                GithubCliUtilError::RepositorySettingError(
+                    "This repository doesn't have parent repository".to_string(),
+                )
+            });
+            result
+        }
+        Err(err) => {
+            error!("GitHub api response is fail: {:?}", err);
+            Err(GithubCliUtilError::GitHubApiError(format!("{:?}", err)))
+        }
     }
 }

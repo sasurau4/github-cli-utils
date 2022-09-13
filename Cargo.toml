@@ -1,28 +1,26 @@
 [package]
-name = "github-cli-utils"
-version = "0.1.0"
 authors = ["Daiki Ihara <sasurau4@gmail.com>"]
-edition = "2018"
-license = "MIT"
 description = """
 github-cli-utils support your deily OSS development via GitHub.
 """
 documentation = "https://github.com/sasurau4/github-cli-utils"
-repository = "https://github.com/sasurau4/github-cli-utils"
+edition = "2018"
+license = "MIT"
+name = "github-cli-utils"
 readme = "README.md"
+repository = "https://github.com/sasurau4/github-cli-utils"
+version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-structopt = "0.3.13"
-failure = "0.1.7"
-exitfailure = "0.5.1"
-hyper = "0.13"
+anyhow = "1"
+clap = "3"
+env_logger = "0.9"
+git2 = "0.15"
+log = "0.4.0"
+reqwest = {version = "0.11", features = ["json"]}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = {version = "1.0"}
-tokio = { version = "0.2", features = ["full"] }
-reqwest = { version = "0.10", features = ["json"] }
-git2 = "0.13"
-clap = "3.0.0-beta.1"
-log = "0.4.0"
-env_logger = "0.7.1"
+thiserror = "1"
+tokio = {version = "1", features = ["full"]}
